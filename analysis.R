@@ -45,15 +45,20 @@ tm_shape(hawaii_fish) +
   tm_legend(main.title.size = 2, text.size = 1, position = c("right","top"),main.title = "Kona crab landings- All")+
   tm_grid()
 
-kona_crab_public<-read.csv(paste0(boxdir,"/kcrab.csv")) 
-colnames(kona_crab_public)<-c("area","Year","Lic","landings")
+# kona_crab_public<-read.csv(paste0(boxdir,"/kcrab.csv")) 
+# colnames(kona_crab_public)<-c("area","Year","Lic","landings")
+# 
+# kona_crab_public<-kona_crab_public %>%  
+#                     group_by(area) %>%
+#                     summarise(total_landings=sum(landings))
+# 
+# kona_crab_sp<-merge(hawaii,kona_crab_public,by.x="AREA_ID",by.y="area")
 
-kona_crab_public<-kona_crab_public %>%  
-                    group_by(area) %>%
-                    summarise(total_landings=sum(landings))
+depth<-raster(paste0(boxdir,"himbsyn.bathytopo.1km.v19.grd"))
 
-kona_crab_sp<-merge(hawaii,kona_crab_public,by.x="AREA_ID",by.y="area")
+depth[depth>0]<-NA
 
-substrate<-brick(paste0(boxdir,"MHI_backscatterSynthesis/mhi_backscat_60m.nc"))
+hawaii_fish_raster<-rasterize(hawaii_fish,depth,field = "total_landings",filename=paste0(boxdir,"hawaii_fish_raster.tif",overwrite = TRUE))
 
+substrate<-raster(paste0(boxdir,"hawaii_bs_msc/mhi_backscat_60m.nc"))
 substrate_reproj<-projectRaster(substrate,crs(hawaii),res=c(60,60))
