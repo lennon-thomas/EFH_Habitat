@@ -15,15 +15,13 @@ annual_summary<-fish_data_all %>%
   ungroup() %>%
   mutate(prop_total = sp_landings/landings*100) 
 
-annual_summary$Scie_Name<-as.factor(annual_summary$Scie_Name)
+#annual_summary$Scie_Name<-as.factor(annual_summary$Scie_Name)
 
 totals<-fish_data_all %>%
   group_by(Scie_Name) %>%
   summarise(total_land = sum(Lbs_Kept)) %>%
   arrange(desc(total_land))
 totals$Scie_Name<-as.factor(totals$Scie_Name)
-
-hawaii <- readOGR(dsn=paste0(boxdir,'fishchart2008.shp'),layer="Fishchart2008",stringsAsFactors=FALSE)
 
 
 
@@ -33,15 +31,16 @@ recent_summary<-annual_summary %>%
   filter(Report_Year > 1995) 
  # arrange(Scie_Name)
 
-ggplot(annual_summary,aes(x=Report_Year,y=sp_landings,fill=Scie_Name))+
+ggplot(annual_summary,aes(x=Report_Year,y=sp_landings,fill=(Scie_Name)))+
   geom_bar(stat = "identity",position = "stack")+
   theme_bw()+
   xlab("Year") +
   ylab("Landings (lbs)") +
   scale_y_continuous(expand = c(0,2),lim=c(0,7e+05)) +
-#  scale_fill_discrete("Species") +
-  ggtitle("Hawaii Commercial Crustacean Landings")+
-  scale_fill_viridis(discrete=TRUE)
+  #scale_fill_brewer ("Species",palette = "Set5")
+  scale_fill_discrete("Species",direction = -1) +
+  ggtitle("1948-2017") 
+#  scale_fill_viridis("Species",discrete=TRUE,direction = -1,option="C")
 
 
 ggplot(recent_summary,aes(x=Report_Year,y=sp_landings,fill=(Scie_Name)))+
@@ -50,10 +49,11 @@ ggplot(recent_summary,aes(x=Report_Year,y=sp_landings,fill=(Scie_Name)))+
   theme_bw()+
   xlab("Year") +
   ylab("Landings (lbs)") +
-  scale_y_continuous(expand = c(0,0), lim=c(0,10000))+
+  scale_fill_discrete("Species",direction = -1) +
+ # scale_y_continuous(expand = c(0,0), lim=c(0,10000))+
 #  scale_fill_discrete("Species") +
-  ggtitle("Hawaii Commercial Crustacean Landings") +
-  scale_fill_viridis(discrete=TRUE)
+  ggtitle("1996-2017 ") +
+ # scale_fill_viridis(discrete=TRUE)
 
 ggplot(recent_summary,aes(x=Report_Year,y=sp_landings,fill=Scie_Name))+
   geom_area(position = 'stack') +
@@ -108,6 +108,7 @@ for (i in 1:length(Species)){
 ha
 ggplot() + 
   geom_polygon(data = hawaii,aes(x = long,y = lat,group = group), colour = "black") +
+  geom_fill()
  geom_raster(data=hawaii_df, aes(x=long,y=lat,fill= total_landings), colour = "black", size = 0.1 , alpha = 0.8) +
 #  facet_wrap(~Scie_Name) +
  # geom_polygon(data = eez.land,aes(x = long,y = lat,group = group), fill =  "white", colour = "black", size = 0.1) +
@@ -124,10 +125,15 @@ ggsave(paste0(boxdir,"Figures/",Species[i] "spatial_catch.jpeg"))
 
 }
 
-Guam_catch<-read.csv(paste0(boxdir,"Guam -DAWR.csv"))
+guam<-read.csv(paste0(boxdir,"Guam -DAWR.csv"))
 names(Guam_catch)
 
-guam<-Guam_catch %>%
+guam$Scie_Name<-as.factor(guam$Scie_Name)
+
+guam$Scie_Name = factor(guam$Scie_Name,levels(guam$Scie_Name)[c(3,2,1,5,7,6,4)])
+
+
+guam<-guam %>%
   group_by(Year,Scie_Name)%>%
   summarise(total_catch=sum(Est_Lbs),
             total_number=sum(Num_Kept)) %>%
@@ -144,16 +150,25 @@ ggplot(guam,aes(x=Year,y=total_catch,fill=(Scie_Name)))+
   ggtitle("Guam Commercial Crustacean Landings") +
   scale_fill_viridis(discrete=TRUE)
 
+totals<-guam %>%
+  group_by(Scie_Name) %>%
+  summarise(total_land = sum(total_catch)) %>%
+  arrange(desc(total_land))
+
 recent_guam<-guam %>%
   filter(Year>1995)
 
-ggplot(recent_guam,aes(x=Year,y=total_catch,fill=(Scie_Name)))+
+ggplot(guam,aes(x=Year,y=total_catch,fill=(Scie_Name)))+
   geom_bar(stat = "identity") +
   #geom_area(position = 'stack') +
   theme_bw()+
   xlab("Year") +
   ylab("Landings (lbs)") +
-  scale_y_continuous(expand = c(0,0),lim=c(0,500))+
+  scale_y_continuous(expand = c(0,0),lim=c(0,300))+
   #  scale_fill_discrete("Species") +
-  ggtitle("Guam Commercial Crustacean Landings") +
-  scale_fill_viridis(discrete=TRUE)
+  ggtitle("1983-2016") +
+  scale_fill_viridis("Species",discrete=TRUE,direction=-1)
+
+
+
+k_crab_results<-raster( paste0(boxdir,"k_crab_results/mhi_suitable.tif"))

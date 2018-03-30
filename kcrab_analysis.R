@@ -4,9 +4,7 @@
 ## Purpose: Idenify EFH habitat for Kona crab in Hawaii
 
 
-
 rm(list = ls())
-
 library(tidyverse)
 library(rgdal)
 library(raster)
@@ -15,8 +13,67 @@ library(tmap)
 
 
 boxdir<- '/Users/lennonthomas/Box Sync/Council Stuff/data/'
+#read in Data
+
+mhi_raster<-raster(paste0(boxdir,"tmp/mhi_raster.tif"))
+mhi_depth<-raster(paste0(boxdir,"tmp/mhi_depth.tif"))
+mhi_substrate<-raster(paste0(boxdir,"tmp/mhi_substrate.tif"))
+mhi_area<-raster(paste0(boxdir,"tmp/mhi_area.tif"))
+
+nwhi_raster<-raster(paste0(boxdir,"tmp/nwhi_raster.tif"))
+nwhi_depth<-raster(paste0(boxdir,"tmp/nwhi_depth.tif"))
+nwhi_substrate<-raster(paste0(boxdir,"tmp/nwhi_substrate.tif"))
+nwhi_area<-raster(paste0(boxdir,"tmp/nwhi_area.tif"))
+####################
+fish_data_all<-read_csv(paste0(boxdir,"Hawaii -DAR.csv"))
+
+# Sum all by area for each species
+fish_sum<-fish_data_all %>%
+  group_by(Area_FK, Scie_Name) %>%
+  summarise(total_landings = sum(Lbs_Kept,na.rm = TRUE)) %>%
+  filter(!is.na(Area_FK)) %>%
+  filter(!Area_FK %in% c(0,10,99999)) 
+
+# Filter out Kona crab data
+kona_crab_all<-fish_sum%>%
+  filter(Scie_Name=="Ranina ranina") %>%
+  set_names("AREA_ID","Species","total landings")
+#########################
+kcrab_depth<-mhi_depth
+
+kcrab_depth[kcrab_depth<2 | kcrab_depth> 200]<-NA
+kcrab_depth[!is.na(kcrab_depth)]<-1
+kcrab_depth_area<-area(krab_depth,na.rm=TRUE)
+
+depth_per_zone<-as.data.frame(zonal(kcrab_depth_area,mhi_raster,fun = 'sum',na.rm = TRUE)) %>%
+  set_names("AREA_ID","Depth")
+
+kcrab_substrate<-mhi_substrate
+
+kcrab_substrate[kcrab_substrate==140 |kcrab_substrate>140]<-NA
+kcrab_substrate[!is.na(kcrab_substrate)]<-1
+
+kcrab_substrate_area<-area(kcrab_substrate,na.rm = TRUE)
+
+substrate_per_zone<-as.data.frame(zonal(kcrab_substrate_area,mhi_raster,fun = 'sum',na.rm = TRUE)) %>%
+  set_names("AREA_ID","Substrate")
 
 
+kcrab_depth[is.na(kcrab_depth)]<-0
+kcrab_substrate[is.na(kcrab_substrate)]<-0
+mhi_s_cells<-overlay(kcrab_depth,kcrab_substrate,fun = function (x,y){x*y}) 
+writeRaster(mhi_s_cells,filename=paste0(boxdir,"final_results/mhi_kcrab.tif"),overwrite=TRUE)
+
+area_s_cells<-area(mhi_s_cells,na.rm=TRUE)
+
+suit_per_zone<-as.data.frame(zonal(area_s_cells,mhi_raster,fun = 'sum',na.rm = TRUE)) %>%
+  set_names("AREA_ID","Suit")
+
+mhi_kcrab_results<-merge(depth_per_zone,substrate_per_zone,by="AREA_ID",all=TRUE) %>%
+  merge(suit_per_zone,by="AREA_ID",all=TRUE) %>%
+  merge(kona_crab_all,by="AREA_ID",all=TRUE)
+
+write.csv(mhi_kcrab_results,paste0(boxdir,"final_results/mhi_kcrab_df.csv")
 # HDAR fishing area , depth and substrate spatial files ---------------------------------------------
 
 
@@ -33,25 +90,25 @@ hawaii <- readOGR(dsn=paste0(boxdir,'fishchart2008.shp'),layer="Fishchart2008",s
 #hawaii<-crop(hawaii,ext)
 
 # Land Shapefile
-land<-hawaii[hawaii@data$TYPE=="Island",]
-
-# 1km depth raster layer
-
-depth<-raster(paste0(boxdir,"himbsyn.bathytopo.1km.v19.grd"))
-
-nwhi_depth<-raster(paste0(boxdir,"Falkor_NWHIfiles/fk140307-0502_bty240.nc"))
-
-
-# rasterize catch area shapefile
-hawaii_raster<-rasterize(hawaii,depth,field="AREA_ID")
-hawaii_raster[hawaii_raster==9998]<-NA
-writeRaster(hawaii_raster,filename = paste0(boxdir,"tmp/hawaii_raster.tif"))
-
-nwhi_raster<-rasterize(hawaii,nwhi_depth,field = "AREA_ID", filename=paste0(boxdir,"tmp/nwhi_raster.tif"),overwrite = TRUE)
-
+# land<-hawaii[hawaii@data$TYPE=="Island",]
+# 
+# # 1km depth raster layer
+# 
+# depth<-raster(paste0(boxdir,"himbsyn.bathytopo.1km.v19.grd"))
+# 
+# nwhi_depth<-raster(paste0(boxdir,"Falkor_NWHIfiles/fk140307-0502_bty240.nc"))
+# 
+# 
+# # rasterize catch area shapefile
+# hawaii_raster<-rasterize(hawaii,depth,field="AREA_ID")
+# hawaii_raster[hawaii_raster==9998]<-NA
+# writeRaster(hawaii_raster,filename = paste0(boxdir,"tmp/hawaii_raster.tif"))
+# 
+# nwhi_raster<-rasterize(hawaii,nwhi_depth,field = "AREA_ID", filename=paste0(boxdir,"tmp/nwhi_raster.tif"),overwrite = TRUE)
+# 
 
 # 60 m substrate data
-substrate<-raster(paste0(boxdir,"MHI_backscatterSynthesis/mhi_backscat_60m.nc"))
+
 substrate[substrate<140]<-1
 substrate[substrate>1]<-2
 
@@ -68,18 +125,6 @@ writeRaster(substrate_reproj,filename = paste0(boxdir,"tmp/mhi_substrate.tif"))
 writeRaster(nwhi_substrate_reproj,filename = paste0(boxdir,"tmp/nwhi_substrate.tif"))
 # Read HDAR private and. public fishery data ------------------------------
 
-fish_data_all<-read_csv(paste0(boxdir,"Hawaii -DAR.csv"))
-
-# Sum all by area for each species
-fish_sum<-fish_data_all %>%
-  group_by(Area_FK, Scie_Name) %>%
-  summarise(total_landings = sum(Lbs_Kept,na.rm = TRUE)) %>%
-  filter(!is.na(Area_FK)) %>%
-  filter(!Area_FK %in% c(0,10,99999)) 
-
-# Filter out Kona crab data
-kona_crab_all<-fish_sum%>%
-  filter(Scie_Name=="Ranina ranina")
 
 
 
@@ -113,11 +158,7 @@ colnames(area_per_zone)<-c("AREA_ID","Total_area")
 
 # Calculate suitable depth and substrate type by area ---------------------
 
-depth[depth>0]<-NA
 
-depth[depth>-2]<-NA
-
-depth[-200>depth]<-NA
 
 #nwhi_depth[nwhi_depth>0]<-NA
 

@@ -7,16 +7,16 @@ crs(mhi_depth)<-"+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0"
 mhi_raster<-rasterize(hawaii_fish,mhi_depth,field = 'AREA_ID')
 crs(mhi_raster)<-"+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0"
 mhi_depth[mhi_depth>0]<-NA
-mhi_depth_pl<-calc(mhi_depth, fun = function(x){x*-1})
+mhi_depth<-calc(mhi_depth, fun = function(x){x*-1})
 mhi_area<-area(mhi_raster,na.rm = TRUE)
 mhi_area<-mask(mhi_area,mhi_depth)
 mhi_substrate<-raster(paste0(boxdir,"MHI_backscatterSynthesis/mhi_backscat_60m.nc"))
 substrate<-projectRaster(mhi_substrate,mhi_area,filename=paste0(boxdir,"tmp/mhi_substrate.tif"),overwrite = TRUE)
 
 
-writeRaster(mhi_raster_,paste0(boxdir,"tmp/mhi_raster.tif"),overwrite = TRUE)
+writeRaster(mhi_raster,paste0(boxdir,"tmp/mhi_raster.tif"),overwrite = TRUE)
 
-writeRaster(mhi_depth_pl,paste0(boxdir,"tmp/mhi_depth.tif"),overwrite = TRUE)
+writeRaster(mhi_depth,paste0(boxdir,"tmp/mhi_depth.tif"),overwrite = TRUE)
 
 writeRaster(mhi_area,paste0(boxdir,"tmp/mhi_area.tif"),overwrite = TRUE)
 
