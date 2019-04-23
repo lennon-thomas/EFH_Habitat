@@ -1,6 +1,6 @@
 ## Crustacean EFH Habitat Analysis
 ## Authour: Lennon Thomas
-## Date: March 27, 2018
+## Date: April 22, 2018
 ## Purpose: Idenify EFH habitat for Kona crab in Hawaii
 
 
@@ -10,14 +10,18 @@ library(rgdal)
 library(raster)
 library(tmap)
 
-
+mhi_ext<-c(-161,-154.3,18.5,22.75)
 
 boxdir<- '/Users/lennonthomas/Box Sync/Council Stuff/data/'
 #read in Data
 
 mhi_raster<-raster(paste0(boxdir,"tmp/mhi_raster.tif"))
+mhi_raster<-crop(mhi_raster,mhi_ext)
 mhi_depth<-raster(paste0(boxdir,"tmp/mhi_depth.tif"))
+
+#mhi_depth<-raster(paste0(boxdir,"hawaii_bty_5m.tif"))
 mhi_substrate<-raster(paste0(boxdir,"tmp/mhi_substrate.tif"))
+#mhi_substrate<-raster(paste0(boxdir,"hawaii_bs_msc.tif"))
 mhi_area<-raster(paste0(boxdir,"tmp/mhi_area.tif"))
 
 nwhi_raster<-raster(paste0(boxdir,"tmp/nwhi_raster.tif"))
@@ -37,24 +41,26 @@ fish_sum<-fish_data_all %>%
 # Filter out Kona crab data
 kona_crab_all<-fish_sum%>%
   filter(Scie_Name=="Ranina ranina") %>%
-  set_names("AREA_ID","Species","total landings")
+  set_names("AREA_ID","Species","total_landings")
 #########################
 kcrab_depth<-mhi_depth
 
 kcrab_depth[kcrab_depth<2 | kcrab_depth> 200]<-NA
 kcrab_depth[!is.na(kcrab_depth)]<-1
-kcrab_depth_area<-area(krab_depth,na.rm=TRUE)
+kcrab_depth_area<-area(kcrab_depth,na.rm=TRUE)
 
 depth_per_zone<-as.data.frame(zonal(kcrab_depth_area,mhi_raster,fun = 'sum',na.rm = TRUE)) %>%
   set_names("AREA_ID","Depth")
 
 kcrab_substrate<-mhi_substrate
+#kcrab_subsrate<-crop(kcrab_substrate,mhi_ext)
 
-kcrab_substrate[kcrab_substrate==140 |kcrab_substrate>140]<-NA
-kcrab_substrate[!is.na(kcrab_substrate)]<-1
+kcrab_substrate[kcrab_substrate < 140]<-1
+kcrab_substrate[kcrab_substrate >= 140]<-NA
+#kcrab_substrate[!is.na(kcrab_substrate)]<-1
 
 kcrab_substrate_area<-area(kcrab_substrate,na.rm = TRUE)
-
+mhi_raster<-crop(mhi_raster,kcrab_substrate_area)
 substrate_per_zone<-as.data.frame(zonal(kcrab_substrate_area,mhi_raster,fun = 'sum',na.rm = TRUE)) %>%
   set_names("AREA_ID","Substrate")
 
@@ -62,7 +68,11 @@ substrate_per_zone<-as.data.frame(zonal(kcrab_substrate_area,mhi_raster,fun = 's
 kcrab_depth[is.na(kcrab_depth)]<-0
 kcrab_substrate[is.na(kcrab_substrate)]<-0
 mhi_s_cells<-overlay(kcrab_depth,kcrab_substrate,fun = function (x,y){x*y}) 
+mhi_s_cells[mhi_s_cells==0]<-NA
+
 writeRaster(mhi_s_cells,filename=paste0(boxdir,"final_results/mhi_kcrab.tif"),overwrite=TRUE)
+kcrab_mhi_suit_shape<-rasterToPolygons(mhi_s_cells,n=16,na.rm=TRUE,digits=12)
+writeOGR(kcrab_mhi_suit_shape,driver="ESRI Shapefile",dsn=paste0(boxdir,"final_results/"),layer="mhi_kcrab_habitat")
 
 area_s_cells<-area(mhi_s_cells,na.rm=TRUE)
 
@@ -71,10 +81,130 @@ suit_per_zone<-as.data.frame(zonal(area_s_cells,mhi_raster,fun = 'sum',na.rm = T
 
 mhi_kcrab_results<-merge(depth_per_zone,substrate_per_zone,by="AREA_ID",all=TRUE) %>%
   merge(suit_per_zone,by="AREA_ID",all=TRUE) %>%
-  merge(kona_crab_all,by="AREA_ID",all=TRUE)
+  left_join(kona_crab_all,by="AREA_ID")
 
-write.csv(mhi_kcrab_results,paste0(boxdir,"final_results/mhi_kcrab_df.csv")
+#### Clean up data frame for summary
+
+mhi_kcrab_results$total_landings[is.na(mhi_kcrab_results$total_landings)]<-0
+
+mhi_kcrab_results<-mhi_kcrab_results %>%
+  mutate(Island = ifelse(AREA_ID<=129, "Big Island",ifelse (AREA_ID>=300 & AREA_ID <= 333, "Maui Nui",
+                                                           ifelse(AREA_ID >=400 & AREA_ID <= 429, "Oahu", 
+                                                                  ifelse(AREA_ID>=500 & AREA_ID <= 529,"Kauai",
+                                                                         "Other")))))
+
+write.csv(mhi_kcrab_results,paste0(boxdir,"final_results/mhi_kcrab_df.csv"))
+
+mhi_kcrab_summary<-
+  mhi_kcrab_results %>%
+  group_by(Island) %>%
+  summarise(suitable_area = sum(Suit,na.rm=TRUE))
+
+write.csv(mhi_kcrab_summary,paste0(boxdir,"final_results/mhi_kcrab_summary.csv"))
+
+## Eggs/Larvae
+
+larv_depth<-mhi_depth
+larv_depth[larv_depth>150]<-NA
+larv_depth[!is.na(larv_depth)]<-1
+
+writeRaster(larv_depth,filename=paste0(boxdir,"final_results/mhi_kcrab_larve.tif"),overwrite=TRUE)
+kcrab_larve_mhi_suit_shape<-rasterToPolygons(larv_depth,n=16,na.rm=TRUE,digits=12)
+writeOGR(kcrab_larve_mhi_suit_shape,driver="ESRI Shapefile",dsn=paste0(boxdir,"final_results/"),layer="mhi_kcrab_larv_habitat")
+
+
+larv_depth_area<-area(larv_depth,na.rm=TRUE)
+
+suit_per_zone_larve<-as.data.frame(zonal(larv_depth_area,mhi_raster,fun = 'sum',na.rm = TRUE)) %>%
+  set_names("AREA_ID","Suit")
+
+mhi_kcrab_larve_results<-suit_per_zone_larve%>%
+  mutate(Island = ifelse(AREA_ID<=129, "Big Island",ifelse (AREA_ID>=300 & AREA_ID <= 333, "Maui Nui",
+                                                            ifelse(AREA_ID >=400 & AREA_ID <= 429, "Oahu", 
+                                                                   ifelse(AREA_ID>=500 & AREA_ID <= 529,"Kauai",
+                                                                          "Other")))))
+
+mhi_kcrab_larve_summary<-
+  mhi_kcrab_larve_results %>%
+  group_by(Island) %>%
+  summarise(suitable_area = sum(Suit,na.rm=TRUE))
+
+write.csv(mhi_kcrab_larve_summary,paste0(boxdir,"final_results/mhi_kcrab_larve_summary.csv"))
+
 # HDAR fishing area , depth and substrate spatial files ---------------------------------------------
+
+#########################N 
+#### NWHI ############
+########################
+
+kcrab_depth<-nwhi_depth
+
+kcrab_depth[kcrab_depth<2 | kcrab_depth> 200]<-0
+kcrab_depth[kcrab_depth>0]<-1
+#kcrab_depth_area<-area(kcrab_depth,na.rm=TRUE)
+
+
+kcrab_substrate<-nwhi_substrate
+
+kcrab_substrate[kcrab_substrate==140 |kcrab_substrate>140]<-0
+kcrab_substrate[kcrab_substrate>0]<-1
+
+#kcrab_substrate_area<-area(kcrab_substrate,na.rm = TRUE)
+
+#substrate_per_zone<-as.data.frame(zonal(kcrab_substrate_area,nwhi_raster,fun = 'sum',na.rm = TRUE)) %>%
+ # set_names("AREA_ID","Substrate")
+
+
+#kcrab_depth[is.na(kcrab_depth)]<-0
+#kcrab_substrate[is.na(kcrab_substrate)]<-0
+nwhi_s_cells<-overlay(kcrab_depth,kcrab_substrate,fun = function (x,y){x+y}) 
+#nwhi_s_cells[nwhi_s_cells==0]<-NA
+
+writeRaster(nwhi_s_cells,filename=paste0(boxdir,"final_results/nwhi_kcrab.tif"),overwrite=TRUE)
+
+
+
+area_s_cells<-area(nwhi_s_cells,na.rm=TRUE)
+
+suit_per_zone<-as.data.frame(zonal(area_s_cells,nwhi_raster,fun = 'sum',na.rm = TRUE)) %>%
+  set_names("AREA_ID","Suit")
+
+nwhi_kcrab_results<-left_join(suit_per_zone,kona_crab_all,by="AREA_ID",all=TRUE) 
+
+#### Clean up data frame for summary
+
+nwhi_kcrab_results$total_landings[is.na(nwhi_kcrab_results$total_landings)]<-0
+
+nwhi_kcrab_results<-nwhi_kcrab_results %>%
+  mutate(Island = ifelse(AREA_ID<=129, "Big Island",ifelse (AREA_ID>=300 & AREA_ID <= 333, "Maui Nui",
+                                                            ifelse(AREA_ID >=400 & AREA_ID <= 429, "Oahu", 
+                                                                   ifelse(AREA_ID>=500 & AREA_ID <= 529,"Kauai",
+                                                                          "Other")))))
+
+write.csv(nwhi_kcrab_results,paste0(boxdir,"final_results/nwhi_kcrab_df.csv"))
+
+nwhi_kcrab_summary<-
+  nwhi_kcrab_results %>%
+  group_by(Island) %>%
+  summarise(suitable_area = sum(Suit,na.rm=TRUE))
+
+write.csv(nwhi_kcrab_summary,paste0(boxdir,"final_results/nwhi_kcrab_summary.csv"))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 hawaii <- readOGR(dsn=paste0(boxdir,'fishchart2008.shp'),layer="Fishchart2008",stringsAsFactors=FALSE)
@@ -142,7 +272,7 @@ kona_crab_public<-kona_crab_public %>%
 
 # Join landings data to spatial data --------------------------------------
 
-hawaii_fish<-merge(hawaii,kona_crab_all, by.x = "AREA_ID", by.y = "Area_FK") 
+hawaii_fish<-merge(hawaii,kona_crab_all, by = "AREA_ID") 
 
 hawaii_landings_raster<-rasterize(hawaii_fish,depth,field = "total_landings",filename=paste0(boxdir,"khawaii_fish_raster.tif"),overwrite = TRUE)
 
@@ -244,17 +374,30 @@ suitability<-merge(suitability, s_cells_zone, by="AREA_ID")
 
 write.csv(suitability,paste0(boxdir,"k_crab_results/kcrab_suitability_df.csv"))
 
+suit<-read_csv(paste0(boxdir,"final_results/mhi_kcrab_df.csv")) %>%
+  mutate(log_landings = log(landings),
+         log_habitat = log(Suit)) %>%
+  filter(AREA_ID<526)
 
 
 
+ggplot(suit,aes(x=Suit,y=log_landings))+
+  geom_point()+
+  xlab("Habitat area (km^2)") +
+  ylab ("Landings (log transformed)") +
+  theme_bw() +
+  scale_x_continuous(limits = c(0,5000))
+
+
+konacrab_landings_all<-
 tm_shape(hawaii_fish) +
   tm_fill(col = "total_landings",colorNA="lightblue") +
   tm_borders(lwd = 1.2) +
   tm_shape(land)+
   tm_fill(col = "white") +
-  tm_legend(main.title.size = 2, text.size = 1, position = c("right","top"),main.title = "Kona crab landings- All")+
-  tm_grid() +
-  tm_text("AREA_ID")
+  tm_legend(main.title.size = 2, text.size = 1, position = c("right","top"),main.title = "Kona crab landings- All")
+
+  save_tmap(konacrab_landings_all,paste0(boxdir,"Figures/kcrab_landings.png"))
 
 # 
 # 

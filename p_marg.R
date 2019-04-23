@@ -39,22 +39,22 @@ p_marg<-fish_data_all %>%
   filter(!Area_FK %in% c(0,10,99999)) %>%
   filter(Scie_Name == "Panulirus marginatus")
 
-hawaii <- readOGR(dsn=paste0(boxdir,'fishchart2008.shp'),layer="Fishchart2008",stringsAsFactors=FALSE)
-
-hawaii_fish<-merge(hawaii,p_marg, by.x = "AREA_ID", by.y = "Area_FK",all=TRUE) 
-
-landings<-hawaii_fish@data[,c("AREA_ID","total_landings")]
-landings$AREA_ID<-as.numeric(landings$AREA_ID)
-
-mhi_zonal<-as.data.frame(zonal(mhi_area,mhi_raster,fun = "sum"))
-colnames(mhi_zonal)<-c("AREA_ID","Total_area")
-
-nwhi_zonal<-as.data.frame(zonal(nwhi_area,nwhi_raster,fun = "sum"))
-colnames(nwhi_zonal)<-c("AREA_ID","Total_area")
-
-results_df<-rbind(mhi_zonal,nwhi_zonal)
-results_df<-merge(results_df,p_marg,by.x="AREA_ID",by.y="Area_FK",all=TRUE)
-
+# hawaii <- readOGR(dsn=paste0(boxdir,'fishchart2008.shp'),layer="Fishchart2008",stringsAsFactors=FALSE)
+# 
+# hawaii_fish<-merge(hawaii,p_marg, by.x = "AREA_ID", by.y = "Area_FK",all=TRUE) 
+# 
+# landings<-hawaii_fish@data[,c("AREA_ID","total_landings")]
+# landings$AREA_ID<-as.numeric(landings$AREA_ID)
+# 
+# mhi_zonal<-as.data.frame(zonal(mhi_area,mhi_raster,fun = "sum"))
+# colnames(mhi_zonal)<-c("AREA_ID","Total_area")
+# 
+# nwhi_zonal<-as.data.frame(zonal(nwhi_area,nwhi_raster,fun = "sum"))
+# colnames(nwhi_zonal)<-c("AREA_ID","Total_area")
+# 
+# results_df<-rbind(mhi_zonal,nwhi_zonal)
+# results_df<-merge(results_df,p_marg,by.x="AREA_ID",by.y="Area_FK",all=TRUE)
+# 
 
 ##########################################################################
 ##########################################################################
@@ -64,58 +64,89 @@ results_df<-merge(results_df,p_marg,by.x="AREA_ID",by.y="Area_FK",all=TRUE)
 
 #Adult suitable depth
 mhi_adult_depth<-mhi_depth
-mhi_adult_depth[mhi_adult_depth>150 | mhi_adult_depth<20]<-NA
-mhi_adult_depth_area<-mask(mhi_area,mhi_adult_depth)
-mhi_adult_depth_zone<-as.data.frame(zonal(mhi_adult_depth_area,mhi_raster,fun="sum"))
-colnames(mhi_adult_depth_zone)<-c("AREA_ID","adult_depth")
-
-nwhi_adult_depth<-nwhi_depth
-nwhi_adult_depth[nwhi_adult_depth>150| nwhi_adult_depth<20]<-NA
-nwhi_adult_depth_area<-mask(nwhi_area,nwhi_adult_depth)
-nwhi_adult_depth_zone<-as.data.frame(zonal(nwhi_adult_depth_area,nwhi_raster,fun="sum"))
-colnames(nwhi_adult_depth_zone)<-c("AREA_ID","adult_depth")
-
-suitable_adult_depth<-rbind(mhi_adult_depth_zone,nwhi_adult_depth_zone)
-
-results_df<-merge(results_df,suitable_adult_depth,by="AREA_ID",all = TRUE)
-
-mhi_adult_depth_area[is.na(mhi_adult_depth_area)]<-0
-nwhi_adult_depth_area[is.na(nwhi_adult_depth_area)]<-0
+mhi_adult_depth[mhi_adult_depth>150 | mhi_adult_depth<20]<-0
+mhi_adult_depth[mhi_adult_depth>0]<-1
 
 #Adults suitable substrate
 mhi_subtrate_adult<-mhi_substrate
-mhi_subtrate_adult[mhi_subtrate_adult < 140 ]<-NA
-mhi_substrate_adult_area<-mask(mhi_area,mhi_subtrate_adult)
-mhi_substrate_adult_zone<-as.data.frame(zonal(mhi_substrate_adult_area,mhi_raster,fun="sum")) 
-colnames(mhi_substrate_adult_zone)<-c("AREA_ID","adult_substrate")
+mhi_subtrate_adult[mhi_subtrate_adult < 140 ]<-0
+mhi_subtrate_adult[mhi_subtrate_adult > 0 ]<-1
+
+mhi_adult_s_cells<-overlay(mhi_adult_depth,mhi_subtrate_adult,fun = function (x,y){x*y}) 
+
+writeRaster(mhi_adult_s_cells,filename = paste0(boxdir,"final_results/mhi_marginatus_adult_EFH.tif"),overwrite = TRUE)
+
+mhi_adult_s_cells[mhi_adult_s_cells==0]<-NA
+
+mhi_adult_s_cells_area<-area(mhi_adult_s_cells,na.rm=TRUE)
+
+mhi_adult_zonal<-as.data.frame(zonal(mhi_adult_s_cells_area,mhi_raster,fun="sum")) %>%
+set_names("AREA_ID","adult_suitable") 
+
+mhi_adult_zonal<- left_join(mhi_adult_zonal,p_marg, by=(c ("AREA_ID"= "Area_FK")))
+
+mhi_adult_zonal$total_landings[is.na(mhi_adult_zonal$total_landings)]<-0
+
+mhi_marg_results<-mhi_adult_zonal %>%
+  mutate(Island = ifelse(AREA_ID<=129, "Big Island",ifelse (AREA_ID>=300 & AREA_ID <= 333, "Maui Nui",
+                                                            ifelse(AREA_ID >=400 & AREA_ID <= 429, "Oahu", 
+                                                                   ifelse(AREA_ID>=500 & AREA_ID <= 529,"Kauai",
+                                                                          "Other")))))
+
+write.csv(mhi_marg_results,paste0(boxdir,"final_results/mhi_marginatus_adult_EFH_df.csv"))
+
+mhi_marg_summary<-
+  mhi_marg_results %>%
+  group_by(Island) %>%
+  summarise(suitable_area = sum(adult_suitable,na.rm=TRUE))
+
+write.csv(mhi_marg_summary,paste0(boxdir,"final_results/mhi_marg_summary.csv"))
+
+
+
+
+nwhi_adult_depth<-nwhi_depth
+nwhi_adult_depth[nwhi_adult_depth>150| nwhi_adult_depth<20]<-0
+nwhi_adult_depth[nwhi_adult_depth>0]<-1
+#nwhi_adult_depth_area<-mask(nwhi_area,nwhi_adult_depth)
+#nwhi_adult_depth_zone<-as.data.frame(zonal(nwhi_adult_depth_area,nwhi_raster,fun="sum"))
+#colnames(nwhi_adult_depth_zone)<-c("AREA_ID","adult_depth")
 
 nwhi_subtrate_adult<-nwhi_substrate
-nwhi_subtrate_adult[nwhi_subtrate_adult < 140 ]<-NA
-nwhi_substrate_adult_area<-mask(nwhi_area,nwhi_subtrate_adult)
-nwhi_substrate_adult_zone<-as.data.frame(zonal(nwhi_substrate_adult_area,nwhi_raster,fun="sum")) 
-colnames(nwhi_substrate_adult_zone)<-c("AREA_ID","adult_substrate")
+nwhi_subtrate_adult[nwhi_subtrate_adult < 140 ]<-0
+nwhi_subtrate_adult[nwhi_subtrate_adult > 0 ]<-1
+#nwhi_substrate_adult_area<-mask(nwhi_area,nwhi_subtrate_adult)
+#nwhi_substrate_adult_zone<-as.data.frame(zonal(nwhi_substrate_adult_area,nwhi_raster,fun="sum")) 
+#colnames(nwhi_substrate_adult_zone)<-c("AREA_ID","adult_substrate")
+nwhi_adult_s_cells<-overlay(nwhi_adult_depth,nwhi_subtrate_adult,fun = function (x,y){x+y}) 
 
-suitable_adult_substrate<-rbind(mhi_substrate_adult_zone,nwhi_substrate_adult_zone)
+nwhi_adult_s_cells[nwhi_adult_s_cells==0]<-NA
 
-results_df<-merge(results_df,suitable_adult_substrate)
+writeRaster(nwhi_adult_s_cells,filename = paste0(boxdir,"final_results/nwhi_marginatus_adult_EFH.tif"),overwrite = TRUE)
 
-mhi_substrate_adult_area[is.na(mhi_substrate_adult_area)]<-0
-nwhi_substrate_adult_area[is.na(nwhi_substrate_adult_area)]<-0
+nwhi_adult_s_area<-area(nwhi_adult_s_cells,na.rm = TRUE) 
+  
 
-mhi_adult_s_cells<-overlay(mhi_adult_depth_area,mhi_substrate_adult_area,fun = function (x,y){x*y}) 
-writeRaster(mhi_adult_s_cells,filename = paste0(boxdir,"red_lobster_results/mhi_adult_suitable.tif"),overwrite = TRUE)
+nwhi_adult_zonal<-as.data.frame(zonal(nwhi_adult_s_area,nwhi_raster,fun="sum")) %>%
+  set_names("AREA_ID","adult_suitable") 
 
-nwhi_adult_s_cells<-overlay(nwhi_adult_depth_area,nwhi_substrate_adult_area,fun = function (x,y){x*y}) 
-writeRaster(mhi_adult_s_cells,filename = paste0(boxdir,"red_lobster_results/nwhi_adult_suitable.tif"),overwrite = TRUE)
 
-mhi_adult_zonal<-as.data.frame(zonal(mhi_adult_s_cells,mhi_raster,fun="sum"))
-nwhi_adult_zonal<-as.data.frame(zonal(nwhi_adult_s_cells,nwhi_raster,fun="sum"))
+nwhi_adult_zonal<- left_join(nwhi_adult_zonal,p_marg, by=(c ("AREA_ID"= "Area_FK")))
 
-all_adult<-rbind(mhi_adult_zonal,nwhi_adult_zonal)
-colnames(all_adult)<-c("AREA_ID","adult_suitable")
-adult_results<-merge(results_df,all_adult,by="AREA_ID")
+nwhi_adult_zonal$total_landings[is.na(nwhi_adult_zonal$total_landings)]<-0
 
-write.csv(results_df,paste0(boxdir,"red_lobster_results/adult_results.csv"))
+nwhi_marg_results<-nwhi_adult_zonal %>%
+  mutate(Island = "NWHI")
+
+write.csv(nwhi_marg_results,paste0(boxdir,"final_results/nwhi_marginatus_adult_EFH_df.csv"))
+
+nwhi_adult_marginus_summary<-
+  nwhi_marg_results %>%
+  group_by(Island) %>%
+  summarise(suitable_area = sum(adult_suitable,na.rm=TRUE))
+
+#write.csv(nwhi_adult_marginus_summary,paste0(boxdir,"mhi_kcrab_summary.csv"))
+
 
 
 ##########################################################################
@@ -125,59 +156,74 @@ write.csv(results_df,paste0(boxdir,"red_lobster_results/adult_results.csv"))
 ##########################################################################
 
 mhi_juvenile_depth<-mhi_depth
-mhi_juvenile_depth[mhi_juvenile_depth>30 | mhi_juvenile_depth<1]<-NA
-mhi_juvenile_depth_area<-mask(mhi_area,mhi_juvenile_depth)
-mhi_juvenile_depth_zone<-as.data.frame(zonal(mhi_juvenile_depth_area,mhi_raster,fun="sum"))
-colnames(mhi_juvenile_depth_zone)<-c("AREA_ID","juvenile_depth")
-
-nwhi_juvenile_depth<-nwhi_depth
-nwhi_juvenile_depth[nwhi_juvenile_depth>30 | nwhi_juvenile_depth<1]<-NA
-nwhi_juvenile_depth_area<-mask(nwhi_area,nwhi_juvenile_depth)
-nwhi_juvenile_depth_zone<-as.data.frame(zonal(nwhi_juvenile_depth_area,nwhi_raster,fun="sum"))
-colnames(nwhi_juvenile_depth_zone)<-c("AREA_ID","juvenile_depth")
-
-suitable_juvenile_depth<-rbind(mhi_juvenile_depth_zone,nwhi_juvenile_depth_zone)
-
-mhi_juvenile_depth_area[is.na(mhi_juvenile_depth_area)]<-0
-nwhi_juvenile_depth_area[is.na(nwhi_juvenile_depth_area)]<-0
-
+mhi_juvenile_depth[mhi_juvenile_depth>30 | mhi_juvenile_depth<1]<-0
+#mhi_juvenile_depth_area<-mask(mhi_area,mhi_juvenile_depth)
+#mhi_juvenile_depth_zone<-as.data.frame(zonal(mhi_juvenile_depth_area,mhi_raster,fun="sum"))
+#colnames(mhi_juvenile_depth_zone)<-c("AREA_ID","juvenile_depth")
 
 mhi_subtrate_juvenile<-mhi_substrate
-mhi_subtrate_juvenile[mhi_subtrate_juvenile < 140 ]<-NA
-mhi_substrate_juvenile_area<-mask(mhi_area,mhi_subtrate_juvenile)
-mhi_substrate_juvnile_zone<-as.data.frame(zonal(mhi_substrate_juvenile_area,mhi_raster,fun="sum")) 
-colnames(mhi_substrate_juvnile_zone)<-c("AREA_ID","juvenile_substrate")
+mhi_subtrate_juvenile[mhi_subtrate_juvenile < 140 ]<-0
+
+#mhi_substrate_juvenile_area<-mask(mhi_area,mhi_subtrate_juvenile)
+#mhi_substrate_juvnile_zone<-as.data.frame(zonal(mhi_substrate_juvenile_area,mhi_raster,fun="sum")) 
+#colnames(mhi_substrate_juvnile_zone)<-c("AREA_ID","juvenile_substrate")
+mhi_juve_s_cells<-overlay(mhi_juvenile_depth,mhi_subtrate_juvenile,fun = function (x,y){x+y}) 
+mhi_juve_s_cells[mhi_juve_s_cells>0]<-1
+mhi_juve_s_cells[mhi_juve_s_cells==0]<-NA
+writeRaster(mhi_juve_s_cells,filename = paste0(boxdir,"final_results/mhi_marginatus_juvenile_EFH.tif"),overwrite = TRUE)
+
+mhi_juve_s_cells_area<-area(mhi_juve_s_cells)
+
+mhi_juvenile_zonal<-as.data.frame(zonal(mhi_juve_s_cells_area,mhi_raster,fun="sum")) %>%
+  set_names("AREA_ID","juve_suit")
+
+mhi_juve_marg_results<-mhi_juvenile_zonal %>%
+  mutate(Island = ifelse(AREA_ID<=129, "Big Island",ifelse (AREA_ID>=300 & AREA_ID <= 333, "Maui Nui",
+                                                            ifelse(AREA_ID >=400 & AREA_ID <= 429, "Oahu", 
+                                                                   ifelse(AREA_ID>=500 & AREA_ID <= 529,"Kauai",
+                                                                          "Other")))))
+
+
+write.csv(mhi_juve_marg_results,paste0(boxdir,"final_results/mhi_marginatus_juvenile_EFH_df.csv"))
+
+mhi_juve_summary<-
+  mhi_juve_marg_results %>%
+  group_by(Island) %>%
+  summarise(suitable_area = sum(juve_suit,na.rm=TRUE))
+
+mhi_marg_summary<-merge(mhi_marg_summary,mhi_juve_summary,by="Island")
+
+write.csv(mhi_marg_summary,paste0(boxdir,"mhi_marg_summary.csv"))
+
+######################################################################
+
+nwhi_juvenile_depth<-nwhi_depth
+nwhi_juvenile_depth[nwhi_juvenile_depth>30 | nwhi_juvenile_depth<1]<-0
+nwhi_juvenile_depth[nwhi_juvenile_depth>0]<-1
 
 nwhi_subtrate_juvenile<-nwhi_substrate
-nwhi_subtrate_juvenile[nwhi_subtrate_juvenile < 140 ]<-NA
-nwhi_substrate_juvenile_area<-mask(nwhi_area,nwhi_subtrate_juvenile)
-nwhi_substrate_juvenile_zone<-as.data.frame(zonal(nwhi_substrate_juvenile_area,nwhi_raster,fun="sum")) 
-colnames(nwhi_substrate_juvenile_zone)<-c("AREA_ID","juvenile_substrate")
+nwhi_subtrate_juvenile[nwhi_subtrate_juvenile < 140 ]<-0
+nwhi_subtrate_juvenile[nwhi_subtrate_juvenile>0]<-1
 
-suitable_juvenile_substrate<-rbind(mhi_substrate_juvnile_zone,nwhi_substrate_juvenile_zone)
 
-mhi_substrate_juvenile_area[is.na(mhi_substrate_juvenile_area)]<-0
-nwhi_substrate_juvenile_area[is.na(nwhi_substrate_juvenile_area)]<-0
+nwhi_juve_s_cells<-overlay(nwhi_juvenile_depth,nwhi_subtrate_juvenile,fun = function (x,y){x+y}) 
+writeRaster(nwhi_juve_s_cells,filename = paste0(boxdir,"final_results/nwhi_marginatus_juvenile_EFH.tif"),overwrite = TRUE)
 
-mhi_juve_s_cells<-overlay(mhi_juvenile_depth_area,mhi_substrate_juvenile_area,fun = function (x,y){x*y}) 
-writeRaster(mhi_juve_s_cells,filename = paste0(boxdir,"red_lobster_results/mhi_juvenile_suitable.tif"),overwrite = TRUE)
+nwhi_juve_s_cells[nwhi_juve_s_cells==0]<-NA
+nwhi_juve_s_cells_area<-area(nwhi_juve_s_cells,na.rm = TRUE)
 
-nwhi_juve_s_cells<-overlay(nwhi_juvenile_depth_area,nwhi_substrate_juvenile_area,fun = function (x,y){x*y}) 
-writeRaster(mhi_juve_s_cells,filename = paste0(boxdir,"red_lobster_results/nwhi_juvenile_suitable.tif"),overwrite = TRUE)
+nwhi_juvenile_zonal<-as.data.frame(zonal(nwhi_juve_s_cells_area,nwhi_raster,fun="sum")) %>%
+set_names("AREA_ID","juvenile_suitable") %>%
+  mutate(Island="NWHI")
 
-mhi_juvenile_zonal<-as.data.frame(zonal(mhi_juve_s_cells,mhi_raster,fun="sum"))
-nwhi_juvenile_zonal<-as.data.frame(zonal(nwhi_juve_s_cells,nwhi_raster,fun="sum"))
+write.csv(nwhi_juvenile_zonal,paste0(boxdir,"final_results/nwhi_marginatus_juvenile_EFH_df.csv"))
 
-all_juvenile<-rbind(mhi_juvenile_zonal,nwhi_juvenile_zonal)
-colnames(all_juvenile)<-c("AREA_ID","juvenile_suitable)")
-juvenile_results<-merge(suitable_juvenile_depth,suitable_juvenile_substrate,by="AREA_ID")
-juvenile_results<-merge(juvenile_results,all_juvenile)
-write.csv(juvenile_results,paste0(boxdir,"red_lobster_results/juvenile_results.csv"))
+nwhi_juve_summary<-
+  nwhi_juvenile_zonal %>%
+  group_by(Island) %>%
+  summarise(suitable_area = sum(juvenile_suitable,na.rm=TRUE))
 
-##########################################################################
-##########################################################################
-## Merge juvenile and  Panulirus marginatus suitability analysis results##
-##########################################################################
-##########################################################################
-pangulris_results<-merge(adult_results,juvenile_results,by="AREA_ID")
-write.csv(pangulris_results,paste0(boxdir,"red_lobster_results/pangulris_results_df.csv"))
+nwhi_marg_summary<-merge(nwhi_adult_marginus_summary,nwhi_juve_summary,by="Island")
+
+write.csv(nwhi_marg_summary,paste0(boxdir,"final_results/nwhi_marg_summary.csv"))
+
