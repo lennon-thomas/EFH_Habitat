@@ -60,9 +60,9 @@ nwhi_substrate[nwhi_substrate>1]<-2
 
 
 # reproject substrate raster
-substrate_reproj<-projectRaster(substrate,hawaii_raster)
+substrate_reproj<-projectRaster(substrate,mhi_raster)
 nwhi_substrate_reproj<-projectRaster(nwhi_substrate,nwhi_raster)
-writeRaster(substrate_reproj,filename = paste0(boxdir,"tmp/mhi_substrate.tif"))
+writeRaster(substrate_reproj,filename = paste0(boxdir,"tmp/mhi_substrate.tif"),overwrite=TRUE)
 writeRaster(nwhi_substrate_reproj,filename = paste0(boxdir,"tmp/nwhi_substrate.tif"))
 # Read HDAR private and. public fishery data ------------------------------
 
@@ -249,5 +249,5 @@ tm_shape(hawaii) +
   tm_shape(land)+
   tm_fill(col = "white") +
   
-  tm_shape(depth) +
+  tm_shape(suit_final) +
   tm_raster()

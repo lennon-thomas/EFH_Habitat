@@ -1,6 +1,6 @@
 ## Crustacean EFH Habitat Analysis
 ## Authour: Lennon Thomas
-## Date: April 22, 2018
+## Date: March 27, 2018
 ## Purpose: Idenify EFH habitat for Kona crab in Hawaii
 
 
@@ -10,29 +10,18 @@ library(rgdal)
 library(raster)
 library(tmap)
 
-mhi_ext<-c(-161,-154.3,18.5,22.75)
+
 
 boxdir<- '/Users/lennonthomas/Box Sync/Council Stuff/data/'
 #read in Data
 
+pro<- "+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0" 
+
 mhi_raster<-raster(paste0(boxdir,"tmp/mhi_raster.tif"))
-mhi_raster<-crop(mhi_raster,mhi_ext)
-mhi_raster[mhi_raster>1000]<-NA
-mhi_raster[mhi_raster<=124]<-1
-mhi_raster[mhi_raster>=300 & mhi_raster<=333]<-1
-mhi_raster[mhi_raster>=400 & mhi_raster<=429]<-1
-mhi_raster[mhi_raster>=500 & mhi_raster<=529]<-1
-mhi_raster[mhi_raster>1]<-NA
-ifelse(AREA_ID<=129, "Big Island",ifelse (AREA_ID>=300 & AREA_ID <= 333, "Maui Nui",
-                                          ifelse(AREA_ID >=400 & AREA_ID <= 429, "Oahu", 
-                                                 ifelse(AREA_ID>=500 & AREA_ID <= 529,"Kauai",
-                                                        "Other"))))) %>%
-
-mhi_depth<-raster(paste0(boxdir,"tmp/mhi_depth.tif"))
-
-#mhi_depth<-raster(paste0(boxdir,"hawaii_bty_5m.tif"))
-mhi_substrate<-raster(paste0(boxdir,"tmp/mhi_substrate.tif"))
-#mhi_substrate<-raster(paste0(boxdir,"hawaii_bs_msc.tif"))
+#mhi_depth<-raster(paste0(boxdir,"tmp/mhi_depth.tif"))
+mhi_depth<-raster(paste0(boxdir,"hawaii_bty_5m.tif"))
+#mhi_substrate<-raster(paste0(boxdir,"tmp/mhi_substrate.tif"))
+mhi_substrate<-raster(paste0(boxdir,"hawaii_bs_msc.tif"))
 mhi_area<-raster(paste0(boxdir,"tmp/mhi_area.tif"))
 
 nwhi_raster<-raster(paste0(boxdir,"tmp/nwhi_raster.tif"))
@@ -56,49 +45,48 @@ kona_crab_all<-fish_sum%>%
 #########################
 kcrab_depth<-mhi_depth
 
-kcrab_depth[kcrab_depth<2 | kcrab_depth> 200]<-0
-kcrab_depth[kcrab_depth>0]<-1
-kcrab_depth_area<-area(kcrab_depth,na.rm=TRUE)
+kcrab_depth[kcrab_depth<2 | kcrab_depth> 200]<-NA
+kcrab_depth[!is.na(kcrab_depth)]<-1
 
-depth_per_zone<-as.data.frame(zonal(kcrab_depth_area,mhi_raster,fun = 'sum',na.rm = TRUE)) %>%
+kcrop_depth_re<-projectRaster(kcrab_depth,crs=pro)
+kcrab_depth_area<-area(kcrop_depth_re,na.rm=TRUE)
+
+#kcrab_depth_area_test<-projectRaster(kcrop_depth_area,crs=pro)
+mhi_raster2<-projectRaster(mhi_raster,kcrab_depth_area)
+
+depth_per_zone<-as.data.frame(zonal(kcrab_depth_area,mhi_raster2,fun = 'sum',na.rm = TRUE)) %>%
   set_names("AREA_ID","Depth")
 
 kcrab_substrate<-mhi_substrate
-#kcrab_subsrate<-crop(kcrab_substrate,mhi_ext)
 
-kcrab_substrate[kcrab_substrate < 140]<-2
-kcrab_substrate[kcrab_substrate >= 140]<-0
-kcrab_substrate[is.na(kcrab_substrate)]<-1
+kcrab_substrate[kcrab_substrate==140 |kcrab_substrate>140]<-NA
+kcrab_substrate[!is.na(kcrab_substrate)]<-1
 
-kcrab_substrate_area<-area(kcrab_substrate,na.rm = TRUE)
-mhi_raster<-crop(mhi_raster,kcrab_substrate_area)
-substrate_per_zone<-as.data.frame(zonal(kcrab_substrate_area,mhi_raster,fun = 'sum',na.rm = TRUE)) %>%
+kcrab_substrate_re<-projectRaster(kcrab_substrate,crs=pro)
+
+kcrab_substrate_area<-area(kcrab_substrate_re,na.rm = TRUE)
+
+#kcrab_substrate_area_test<-projectRaster(kcrab)
+mhi_raster2<-projectRaster(mhi_raster,kcrab_substrate_area)
+
+substrate_per_zone<-as.data.frame(zonal(kcrab_substrate_area,mhi_raster2,fun = 'sum',na.rm = TRUE)) %>%
   set_names("AREA_ID","Substrate")
 
 
-#kcrab_depth[is.na(kcrab_depth)]<-0
-#kcrab_substrate[is.na(kcrab_substrate)]<-0
+kcrab_depth[is.na(kcrab_depth)]<-0
+kcrab_substrate[is.na(kcrab_substrate)]<-0
 mhi_s_cells<-overlay(kcrab_depth,kcrab_substrate,fun = function (x,y){x*y}) 
 mhi_s_cells[mhi_s_cells==0]<-NA
 
 writeRaster(mhi_s_cells,filename=paste0(boxdir,"final_results/mhi_kcrab.tif"),overwrite=TRUE)
-kcrab<-raster(paste0(boxdir,"final_results/mhi_kcrab.tif"))
-writeRaster(kcrab,filename=paste0(boxdir,"final_final/mhi_r_rani_habitat.tif"),overwrite=TRUE)
-
-
-kcrab_mhi_suit_shape<-polygonize(kcrab,na.rm=TRUE)
-st_write(kcrab_mhi_suit_shape,driver="ESRI Shapefile",dsn=paste0(boxdir,"final_final/"),layer="mhi_r_rani_habitat",update=TRUE)
-kcrab<-readOGR(dsn=paste0(boxdir,"final_final/"),layer="mhi_r_rani_habitat")
-colnames(kcrab@data[1])<-"k_crab"
-writeOGR(kcrab,driver="ESRI Shapefile",dsn=paste0(boxdir,"final_final/"),layer="mhi_r_rani_habitat",overwrite_layer = TRUE)
 
 area_s_cells<-area(mhi_s_cells,na.rm=TRUE)
 
 suit_per_zone<-as.data.frame(zonal(area_s_cells,mhi_raster,fun = 'sum',na.rm = TRUE)) %>%
   set_names("AREA_ID","Suit")
 
-mhi_kcrab_results<-merge(depth_per_zone,suit_per_zone,by="AREA_ID",all=TRUE) %>%
-#  merge(suit_per_zone,by="AREA_ID",all=TRUE) %>%
+mhi_kcrab_results<-merge(depth_per_zone,substrate_per_zone,by="AREA_ID",all=TRUE) %>%
+  merge(suit_per_zone,by="AREA_ID",all=TRUE) %>%
   left_join(kona_crab_all,by="AREA_ID")
 
 #### Clean up data frame for summary
@@ -109,53 +97,16 @@ mhi_kcrab_results<-mhi_kcrab_results %>%
   mutate(Island = ifelse(AREA_ID<=129, "Big Island",ifelse (AREA_ID>=300 & AREA_ID <= 333, "Maui Nui",
                                                            ifelse(AREA_ID >=400 & AREA_ID <= 429, "Oahu", 
                                                                   ifelse(AREA_ID>=500 & AREA_ID <= 529,"Kauai",
-                                                                         "Other"))))) %>%
-  filter(Island!="Other")
+                                                                         "Other")))))
 
 write.csv(mhi_kcrab_results,paste0(boxdir,"final_results/mhi_kcrab_df.csv"))
 
 mhi_kcrab_summary<-
   mhi_kcrab_results %>%
   group_by(Island) %>%
-  summarise(suitable_area = sum(Suit,na.rm=TRUE),
-            suitable_depth=sum(Depth,na.rm=TRUE))
-
-write.csv(mhi_kcrab_summary,paste0(boxdir,"final_results/mhi_kcrab_summary.csv"))
-
-## Eggs/Larvae
-
-larv_depth<-mhi_depth
-larv_depth[larv_depth>150]<-NA
-larv_depth[!is.na(larv_depth)]<-2
-
-writeRaster(larv_depth,filename=paste0(boxdir,"final_results/mhi_kcrab_larve.tif"),overwrite=TRUE)
-larv_depth<-raster(paste0(boxdir,"final_results/mhi_kcrab_larve.tif"))
-larve_suit<-mask(mhi_raster,larv_depth,maskvalue=2,updatevalue=2)#overlay(larv_depth,mhi_raster,fun = function (x,y){x*y}) 
-writeRaster(larve_suit,paste0(boxdir,"final_final/mhi_all_habitat_EL.tif"))
-larve_suit<-raster(paste0(boxdir,"final_final/mhi_all_habitat_EL.tif"))
-kcrab_larve_mhi_suit_shape<-polygonize(larve_suit,na.rm=TRUE)
-st_write(kcrab_larve_mhi_suit_shape,driver="ESRI Shapefile",dsn=paste0(boxdir,"final_final/"),layer="mhi_all_habitat_EL",update=TRUE)
-larve_suit<-readOGR(dsn=paste0(boxdir,"final_final/"),layer="mhi_all_habitat_EL")
-colnames(larve_suit@data[1])<-"E_L"
-writeOGR(larve_suit,dsn=paste0(boxdir,"final_final/"),layer="mhi_all_habitat_EL", overwrite=TRUE)
-
-larv_depth_area<-area(larv_depth,na.rm=TRUE)
-
-suit_per_zone_larve<-as.data.frame(zonal(larv_depth_area,mhi_raster,fun = 'sum',na.rm = TRUE)) %>%
-  set_names("AREA_ID","Suit")
-
-mhi_kcrab_larve_results<-suit_per_zone_larve%>%
-  mutate(Island = ifelse(AREA_ID<=129, "Big Island",ifelse (AREA_ID>=300 & AREA_ID <= 333, "Maui Nui",
-                                                            ifelse(AREA_ID >=400 & AREA_ID <= 429, "Oahu", 
-                                                                   ifelse(AREA_ID>=500 & AREA_ID <= 529,"Kauai",
-                                                                          "Other")))))
-
-mhi_kcrab_larve_summary<-
-  mhi_kcrab_larve_results %>%
-  group_by(Island) %>%
   summarise(suitable_area = sum(Suit,na.rm=TRUE))
 
-write.csv(mhi_kcrab_larve_summary,paste0(boxdir,"final_results/mhi_kcrab_larve_summary.csv"))
+write.csv(mhi_kcrab_summary,paste0(boxdir,"final_results/mhi_kcrab_summary.csv"))
 
 # HDAR fishing area , depth and substrate spatial files ---------------------------------------------
 

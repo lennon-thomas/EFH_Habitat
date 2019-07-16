@@ -11,8 +11,8 @@ nwhi<-crop(hawaii,nwhi_ext)
 land<-mhi_hawaii[mhi_hawaii@data$TYPE=="Island",]
 nwhi_land<-nwhi[nwhi@data$TYPE=="Island",]
 # kcrab_mhi_map<-merge(mhi_hawaii,mhi_kcrab_results,by = "AREA_ID",all = TRUE)
-penc_s_cells<-raster(paste0(boxdir,"final_results/MHI_P_penicillatus_EFH.tif"))
-
+#penc_s_cells<-raster(paste0(boxdir,"final_results/MHI_P_penicillatus_EFH.tif"))
+penc_s_cells<-raster(paste0(boxdir,"final_results/mhi_penicillatus_adult_EFH.tif"))
 penc_mhi_map<- 
   tm_shape(mhi_hawaii)+
   tm_fill(col = "lightblue", alpha = 0.3) +
@@ -21,13 +21,21 @@ penc_mhi_map<-
   tm_fill(col = "white",alpha = 1) +
   tm_borders(lwd = 1) +
   tm_shape(penc_s_cells) +
-  tm_raster(showNA=FALSE,title="P. penicillatus",palette = "red",label="EFH") + 
-  tm_legend(main.title.size = 1, text.size = 0.8, position = c("right","top"))
+  tm_raster(showNA=FALSE,title="",style="cat",palette = c("purple","red"),labels=c("Adult/Juvenile habitat (depth)",
+                                                                                 "Adult/Juvenile habitat (depth + substrate)")) + 
+  tm_legend(main.title.size = 1, text.size = 0.8, position = c("left","bottom"))
 
 
 save_tmap(penc_mhi_map, paste0(boxdir,"final_results/MHI_p_penc_EFH.png"))
 
+kstudy<-read.csv("kcrab_mort_study.csv")
+kstudy$new_long<-kstudy$new_long*-1
 
+#fish_pt<-SpatialPointsDataFrame(coords=c(kstudy$new_long,kstudy$new_lat),data=kstudy$no_crabs, proj4string = CRS("+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0"))
+#o<-cbind(kstudy$new_long,kstudy$new_lat)
+
+co<-cbind(kstudy$new_long,kstudy$new_lat)
+fish_pt<-SpatialPointsDataFrame(coords=co,data=kstudy,proj4string = CRS("+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0"))
 
 
 kcrab_mhi<- 
@@ -37,9 +45,12 @@ kcrab_mhi<-
   tm_shape(land)+
   tm_fill(col = "white",alpha = 1) +
   tm_borders(lwd = 1) +
-  tm_shape(larv_depth,) +
-  tm_raster(showNA=FALSE,palette  = "purple",legend.show = FALSE) 
- # tm_legend(main.title.size = 1, text.size = 0.8, position = c("right","top"))
+  tm_shape(kcrab) +
+  tm_raster(style="cat",title="",showNA=FALSE,palette  = c("yellow","darkorange"),labels=c("Adult/Juvenile habitat (depth)",
+                                                                                   "Adult/Juvenile habitat (depth + substrate)")) +
+  tm_shape(fish_pt) +
+  tm_dots(col="darkgreen",size=0.05,alpha=0.5,labels="verified fishing grounds",legend.show = TRUE)+
+  tm_legend(main.title.size = 1, text.size = 0.9, position = c("left","bottom"))
 
  
 save_tmap(kcrab_mhi, paste0(boxdir,"final_results/MHI_kcrab_EFH.png"))
@@ -63,7 +74,10 @@ save_tmap(kcrab_nwhi, paste0(boxdir,"final_results/nwhi_kcrab_EFH.png"))
 
 marg_ad<-raster(paste0(boxdir,"final_results/mhi_marginatus_adult_EFH.tif"))
 marg_ad[marg_ad==0]<-NA
+marg_ad[marg_ad==1]<-1
+marg_ad[marg_ad==2]<-2
 marg_juv<-raster(paste0(boxdir,"final_results/mhi_marginatus_juvenile_EFH.tif"))
+
 
 marginatus_mhi<- 
   tm_shape(mhi_hawaii)+
@@ -72,14 +86,30 @@ marginatus_mhi<-
    tm_shape(land)+
   tm_fill(col = "white",alpha = 1) +
   tm_borders(lwd = .5) +
-  tm_shape(marg_ad) +
-  tm_raster(showNA=FALSE,title="Spiny lobster (P. marginatus)",palette = "red",labels="Adult EFH") + 
+#  tm_shape(marg_ad) +
+ # tm_raster(style="cat",showNA=FALSE,title="",palette = c("yellow","tomato"),labels=c("Adult habitat (depth)",
+                                                              #                  "Adult habitat (depth + substrate)")) + 
   tm_shape(marg_juv) +
-    tm_raster(showNA=FALSE,title="",palette = "purple",labels="Juvenile EFH")+
-  tm_legend(main.title.size = 1, text.size = 0.8, position = c("right","top"))
+    tm_raster(showNA=FALSE,title="",palette = c("purple","red"),labels=c("Juvenile habitat (depth)",
+             "Juvenile habitat (depth + substrate)"),style="cat")+
+  tm_legend(main.title.size = 1, text.size = 0.9, position = c("left","bottom"))
 
  
   
+squa<-raster(paste0(boxdir,"final_results/mhi_squammosus_habitat.tif"),overwrite = TRUE)
+squa[squa==0]<-NA
+squa_mhi<- 
+  tm_shape(mhi_hawaii)+
+  tm_fill(col = "lightblue", alpha = 0.3) +
+  tm_borders(lwd =0.4) +
+  tm_shape(land)+
+  tm_fill(col = "white",alpha = 1) +
+  tm_borders(lwd = .5) +
+   tm_shape(squa) +
+  tm_raster(style="cat",showNA=FALSE,title="",palette = "tomato",labels=c("Adult/juvenile habitat (depth + substrate)")) +
+  tm_legend(main.title.size = 1, text.size = 0.9, position = c("left","bottom"))
+
+
 
 save_tmap(marginatus_mhi, paste0(boxdir,"final_results/MHI_marginatus_EFH.png"))
 
@@ -118,13 +148,15 @@ save_tmap(marg_juve_nwhi, paste0(boxdir,"final_results/NWHI_marginatus_juvenile_
 mhi_depth_map<- 
   tm_shape(mhi_depth) +
  # tm_layout(legend.position = c("RIGHT","top"),legend.outside=TRUE) +
-  tm_raster(showNA=FALSE,title="Depth (m)",palette="YlGnBu", n = 60, contrast = c(0.18, 0.9),legend.show = FALSE) + 
+  tm_raster(showNA=FALSE,title="Depth (m)",palette="YlGnBu", n = 10, contrast = c(0.18, 0.9),legend.show = TRUE,style="cont") + 
   tm_shape(mhi_hawaii)+
  # tm_fill(col = "lightblue", alpha = 0) +
   tm_borders(lwd =1) +
    tm_shape(land)+
   tm_fill(col = "white") +
-  tm_borders(lwd = 1) 
+  tm_borders(lwd = 1) +
+  tm_layout(legend.outside = TRUE) +
+  tm_legend(main.title.size = 2, text.size = .75)
 
 save_tmap(mhi_depth_map,paste0(boxdir,"Figures/mhi_depth.png"))
  
@@ -153,7 +185,10 @@ mhi_substrate_map<-
   tm_borders(lwd =0.4) +
   tm_shape(land)+
   tm_fill(col = "white") +
-  tm_borders(lwd = 1) 
+  tm_borders(lwd = 1) +
+  tm_layout(legend.outside = TRUE) +
+  tm_legend(main.title.size = 2, text.size = .75)
+
 
 save_tmap(mhi_substrate_map,paste0(boxdir,"Figures/mhi_substrate.png"))
 

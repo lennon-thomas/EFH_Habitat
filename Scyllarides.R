@@ -32,12 +32,35 @@ boxdir<- '/Users/lennonthomas/Box Sync/Council Stuff/data/'
 
 fish_data_all<-read_csv(paste0(boxdir,"Hawaii -DAR.csv"))
 
-p_marg<-fish_data_all %>%
-  group_by(Area_FK, Scie_Name) %>%
-  summarise(total_landings = sum(Lbs_Kept,na.rm = TRUE)) %>%
+slipper<-c("Arctides regalis","Scyllarides haanii", "Scyllarides squammosus")
+
+spy<-fish_data_all %>%
   filter(!is.na(Area_FK)) %>%
   filter(!Area_FK %in% c(0,10,99999)) %>%
-  filter(Scie_Name == "Panulirus marginatus")
+  filter(Scie_Name %in% slipper) %>%
+  mutate(island = ifelse(Area_FK<=129, "Big Island",ifelse (Area_FK>=300 &Area_FK <= 333, "Maui Nui",
+                                                            ifelse(Area_FK >=400 & Area_FK <= 429, "Oahu", 
+                                                                   ifelse(Area_FK>=500 & Area_FK <= 529,"Kauai",
+                                                                          "Other"))))) %>%
+  filter(island!="Other") %>%
+  group_by(Area_FK) %>%
+  summarise(total_landings = sum(Lbs_Kept,na.rm = TRUE),
+            no_lic=length(total_landings)) %>%
+  ungroup() 
+
+  
+
+  
+
+
+
+total_catch<-sum(spy$total_landings)
+  
+spy<-spy %>%
+  mutate(perc_total = total_landings /total_catch*100)
+
+ggplot(data=spy,aes(x=Report_Year,y=total_landings,fill=Scie_Name))+
+  geom_bar(stat="identity")
 
 # hawaii <- readOGR(dsn=paste0(boxdir,'fishchart2008.shp'),layer="Fishchart2008",stringsAsFactors=FALSE)
 # 
@@ -64,32 +87,33 @@ p_marg<-fish_data_all %>%
 
 #Adult suitable depth
 mhi_adult_depth<-mhi_depth
-mhi_adult_depth[mhi_adult_depth>150 | mhi_adult_depth<20]<-0
+mhi_adult_depth[mhi_adult_depth>137 | mhi_adult_depth<17]<-0
 mhi_adult_depth[mhi_adult_depth>0]<-1
 
 #Adults suitable substrate
 mhi_subtrate_adult<-mhi_substrate
 mhi_subtrate_adult[mhi_subtrate_adult < 140 ]<-0
-mhi_subtrate_adult[mhi_subtrate_adult > 0 ]<-2
-mhi_subtrate_adult[is.na(mhi_subtrate_adult)]<-1
+mhi_subtrate_adult[mhi_subtrate_adult > 0 ]<-1
+
 mhi_adult_s_cells<-overlay(mhi_adult_depth,mhi_subtrate_adult,fun = function (x,y){x*y}) 
 
-writeRaster(mhi_adult_s_cells,filename = paste0(boxdir,"final_results/mhi_marginatus_adult_EFH.tif"),overwrite = TRUE)
-mhi_adult_s_cells<-raster(paste0(boxdir,"final_results/mhi_marginatus_adult_EFH.tif"))
+writeRaster(mhi_adult_s_cells,filename = paste0(boxdir,"final_results/mhi_squammosus_habitat.tif"),overwrite = TRUE)
+mhi_adult_s_cells<-raster(paste0(boxdir,"final_results/mhi_squammosus_habitat.tif"),overwrite = TRUE)
 
-mhi_adult_s_cells<-raster(paste0(boxdir,"final_final/mhi_p_mar_habitat_A.tif"))
-#mhi_adult_s_cells_shape<-rasterToPolygons(mhi_adult_s_cells,n=16,na.rm=TRUE,digits=12)
+writeRaster(mhi_adult_s_cells,filename = paste0(boxdir,"final_final/mhi_s_squa_habitat.tif"),overwrite = TRUE)
 mhi_adult_s_cells[mhi_adult_s_cells==0]<-NA
-writeRaster(mhi_adult_s_cells,filename=paste0(boxdir,"final_final/mhi_p_mar_habitat_A.tif"),overwrite=TRUE)
+mhi_adult_s_cells[mhi_adult_s_cells==1]<-2
 mhi_adult_s_cells_shape<-polygonize(mhi_adult_s_cells,na.rm=TRUE)
 
+mhi_adult_s_cells_shape<-rasterToPolygons(mhi_adult_s_cells,n=16,na.rm=TRUE,digits=12,dissolve = TRUE)
 
-st_write(mhi_adult_s_cells_shape,driver="ESRI Shapefile",dsn=paste0(boxdir,"final_final/"),layer="mhi_p_mar_habitat_A",update=TRUE)
-p_marg<-readOGR(dsn=paste0(boxdir,"final_final/"),layer="mhi_p_mar_habitat_A")
-colnames(p_marg@data[1])<-"p_mar_adult"
-writeOGR(p_marg,dsn=paste0(boxdir,"final_final/"),layer="mhi_p_mar_habitat_A.",driver="ESRI Shapefile",overwrite=TRUE)
-mhi_adult_s_cells[mhi_adult_s_cells==0]<-NA
-mhi_adult_s_cells[mhi_adult_s_cells==1]<-NA
+st_write(mhi_adult_s_cells_shape,driver="ESRI Shapefile",dsn=paste0(boxdir,"final_final/"),layer="mhi_s_squa_habitat",update=TRUE)
+
+s_squa<-readOGR(dsn=paste0(boxdir,"final_final/"),layer="mhi_s_squa_habitat")
+colnames(s_squa@data[1])<-"s_squa"
+writeOGR(s_squa,dsn=paste0(boxdir,"final_final/"),layer="mhi_s_squa_habitat",driver="ESRI Shapefile",overwrite=TRUE)
+#mhi_adult_s_cells[mhi_adult_s_cells==0]<-NA
+
 mhi_adult_s_cells_area<-area(mhi_adult_s_cells,na.rm=TRUE)
 
 mhi_adult_zonal<-as.data.frame(zonal(mhi_adult_s_cells_area,mhi_raster,fun="sum")) %>%
@@ -105,16 +129,52 @@ mhi_marg_results<-mhi_adult_zonal %>%
                                                                    ifelse(AREA_ID>=500 & AREA_ID <= 529,"Kauai",
                                                                           "Other")))))
 
-write.csv(mhi_marg_results,paste0(boxdir,"final_results/mhi_marginatus_adult_EFH_df.csv"))
-
+write.csv(mhi_marg_results,paste0(boxdir,"final_results/mhi_squammosus_EFH_df.csv"))
+mhi_squ_results<-read.csv(paste0(boxdir,"final_results/mhi_squammosus_EFH_df.csv"))
+mhi_squ_results<-left_join(mhi_squ_results,spy,by=c("AREA_ID"="Area_FK"))
+reg<-lm(adult_suitable~total_landings,data=mhi_squ_results)
 mhi_marg_summary<-
   mhi_marg_results %>%
   group_by(Island) %>%
   summarise(suitable_area = sum(adult_suitable,na.rm=TRUE))
 
-write.csv(mhi_marg_summary,paste0(boxdir,"final_results/mhi_marg_summary.csv"))
+write.csv(mhi_marg_summary,paste0(boxdir,"final_results/mhi_squa_summary.csv"))
 
-mhi_marg_summary<-read.csv(paste0(boxdir,"final_results/mhi_marg_summary.csv"))
+hawaii <- readOGR(dsn=paste0(boxdir,'fishchart2008.shp'),layer="Fishchart2008",stringsAsFactors=FALSE)
+
+ext<-c(-161,-154.3,18.5,22.75)
+land<-hawaii[hawaii@data$TYPE=="Island",]
+mhi_hawaii<-crop(hawaii,ext)
+
+hawaii<-crop(hawaii,ext)
+
+tidy_hawaii<-tidy(hawaii)
+
+temp_df<-as.data.frame(hawaii@data)
+
+temp_df$id <- row.names(temp_df)
+
+hawaii_df <- merge(tidy_hawaii, temp_df, by="id")
+
+# Land Shapefile
+land<-hawaii[hawaii@data$TYPE=="Island",]
+
+tm_shape(mhi_hawaii)+
+  tm_fill(col = "lightblue", alpha = 0.3) +
+  tm_borders(lwd =0.4) +
+  tm_shape(land)+
+  tm_fill(col = "white",alpha = 1) +
+  tm_borders(lwd = 0.1) +
+  tm_shape(mhi_adult_s_cells) +
+  tm_raster(col="mhi_squammosus_habitat",showNA=FALSE,colorNA=NULL,style="cat", labels=
+              c(""), title="",palette =  c("red")) +
+  #tm_borders(lwd = 0.1) +
+  tm_layout( legend.outside=TRUE) 
+
+
+
+
+#mhi_marg_summary<-read.csv(paste0(boxdir,"final_results/mhi_marg_summary.csv"))
 
 
 nwhi_adult_depth<-nwhi_depth
@@ -157,6 +217,8 @@ nwhi_adult_marginus_summary<-
   group_by(Island) %>%
   summarise(suitable_area = sum(adult_suitable,na.rm=TRUE))
 
+
+
 #write.csv(nwhi_adult_marginus_summary,paste0(boxdir,"mhi_kcrab_summary.csv"))
 
 
@@ -183,22 +245,18 @@ p#mhi_substrate_juvenile_area<-mask(mhi_area,mhi_subtrate_juvenile)
 #mhi_substrate_juvnile_zone<-as.data.frame(zonal(mhi_substrate_juvenile_area,mhi_raster,fun="sum")) 
 #colnames(mhi_substrate_juvnile_zone)<-c("AREA_ID","juvenile_substrate")
 mhi_juve_s_cells<-overlay(mhi_juvenile_depth,mhi_subtrate_juvenile,fun = function (x,y){x*y}) 
+#mhi_juve_s_cells[mhi_juve_s_cells>0]<-1
 mhi_juve_s_cells[mhi_juve_s_cells==0]<-NA
 writeRaster(mhi_juve_s_cells,filename = paste0(boxdir,"final_results/mhi_marginatus_juvenile_EFH.tif"),overwrite = TRUE)
 
-mhi_juve_s_cells<-raster(paste0(boxdir,"final_results/mhi_marginatus_juvenile_EFH.tif"))
-writeRaster(mhi_juve_s_cells,paste0(boxdir,"final_final/mhi_p_marg_habitat_J.tif"))
-#mhi_juve_s_cells[mhi_juve_s_cells==1]<-NA
-
-
 mhi_juve_cells_shape<-polygonize(mhi_juve_s_cells,na.rm=TRUE)
-st_write(mhi_juve_cells_shape,driver="ESRI Shapefile",dsn=paste0(boxdir,"final_final/"),layer="mhi_p_marg_habitat_J",update=TRUE)
+st_write(mhi_juve_cells_shape,driver="ESRI Shapefile",dsn=paste0(boxdir,"final_results/"),layer="mhi_marginatus_juve_habitat",update=TRUE)
 
-mhi_juve_cells_shape<-readOGR(dsn=paste0(boxdir,"final_final/"),layer="mhi_p_marg_habitat_J")
+mhi_juve_cells_shape<-readOGR(dsn=paste0(boxdir,"final_results/"),layer="mhi_marginatus_juve_habitat")
 colnames(mhi_juve_cells_shape@data)[1]<-"p_mar_juve"
-writeOGR(mhi_juve_cells_shape,dsn=paste0(boxdir,"final_final/"),layer="mhi_p_marg_habitat_J",driver = "ESRI Shapefile",overwrite = TRUE)
+writeOGR(mhi_juve_cells_shape,dsn=paste0(boxdir,"final_results/"),layer="mhi_marginatus_juve_habitat",driver = "ESRI Shapefile",overwrite = TRUE)
 
-mhi_juve_s_cells_area<-area(mhi_juve_s_cells,na.rm=TRUE)#,dsn=paste0(boxdir,"final_results/"),layer="mhi_marginatus_juve_habitat")
+mhi_juve_s_cells_area<-area(mhi_juve_s_cells,dsn=paste0(boxdir,"final_results/"),layer="mhi_marginatus_juve_habitat")
 
 mhi_juvenile_zonal<-as.data.frame(zonal(mhi_juve_s_cells_area,mhi_raster,fun="sum")) %>%
   set_names("AREA_ID","juve_suit")
@@ -219,7 +277,7 @@ mhi_juve_summary<-
 
 mhi_marg_summary<-merge(mhi_marg_summary,mhi_juve_summary,by="Island")
 
-write.csv(mhi_marg_summary,paste0(boxdir,"final_results/mhi_marg_summary.csv"))
+write.csv(mhi_marg_summary,paste0(boxdir,"mhi_marg_summary.csv"))
 
 ######################################################################
 

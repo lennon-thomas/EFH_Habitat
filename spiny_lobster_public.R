@@ -41,9 +41,7 @@ geom_bar(stat = "identity",position = "stack") +
    ggtitle("1948-2017") 
 
 hawaii <- readOGR(dsn=paste0(boxdir,'fishchart2008.shp'),layer="Fishchart2008",stringsAsFactors=FALSE)
-ext<-c(-161,-154.3,18.5,22.75)
 
-hawaii<-crop(hawaii,ext)
 
 fish_data_all<-read_csv(paste0(boxdir,"Hawaii -DAR.csv"))
 fish_data_all$Scie_Name<-as.factor(fish_data_all$Scie_Name)
@@ -157,24 +155,22 @@ for (i in 1:length(Species)){
   hawaii_df<-cbind(hawaii_df,long_and_lat) 
   
   
-  kcrab<-read_csv(paste0(boxdir,"kcrab.csv")) %>%
+  kcrab<-read.csv(paste0(boxdir,"kcrab.csv")) %>%
     group_by(Area.code) %>%
-    summarise(landings=sum(Lbs.))%>%
+    summarise(landings=log(sum(Lbs.)))%>%
     select(Area.code,landings) %>%
     setNames(c("Area","Kona_crab"))
   
-  p_marg<-read_csv(paste0(boxdir,"spiny_lobster.csv")) %>%
+  p_marg<-read.csv(paste0(boxdir,"spiny_lobster.csv")) %>%
     group_by(Area.code) %>%
-    summarise(landings=sum(Lbs.))%>%
+    summarise(landings=log(sum(Lbs.)))%>%
     select(Area.code,landings) %>%
    setNames(c("Area","Spiny_lobster"))
   
-  slip<-read_csv(paste0(boxdir,"slipper_lobster.csv"))
-  names(slip)<-c("Area","Fiscal","No_lic","lbs")
-  slip<-slip %>%  
-  group_by(Area) %>%
-    summarise(landings=sum(lbs))%>%
-  dplyr::  select(Area,landings) %>%
+  slip<-read.csv(paste0(boxdir,"slipper_lobster.csv")) %>%
+    group_by(Area.code) %>%
+    summarise(landings=log(sum(Lbs.)))%>%
+    select(Area.code,landings) %>%
     setNames(c("Area","Slipper_lobster"))
   
 sp_public<-full_join(p_marg,kcrab)  
@@ -182,29 +178,37 @@ sp_public<-full_join(p_marg,kcrab)
 sp_public<-left_join(sp_public,slip)
   
 
-  hawaii_df<-merge(hawaii,slip,by.x="AREA_ID",by.y="Area",all=TRUE)
+  hawaii_df<-merge(hawaii,sp_public,by.x="AREA_ID",by.y="Area",all=TRUE)
 #  hawaii_df$Scie_Name<-as.character(Species[i])
   land<-hawaii[hawaii@data$TYPE=="Island",]  
   #hawaii_df2<-left_join(hawaii_df,recent_landings_area,by=c("AREA_ID"= "Area_FK"))
   mhi_ext<-c(-161,-154.3,18.5,22.75)
   mhi<-crop(hawaii,mhi_ext)
   
-  tm_shape(hawaii_df) +
-    tm_fill(col="Kona_crab",colorNA = "lightblue", title = "Kona crab landings (log transformed)") +
+
+    tm_shape(mhi)+
+    tm_fill(col="lightblue", alpha = 0.4) +
+    tm_shape(hawaii_df) +
+    tm_fill(col="Kona_crab",colorNA = "lightblue", showNA = FALSE, title = "Kona crab \n landings (lbs)") +
     tm_borders(lwd = 1.2) +
-    tm_layout(legend.position = c("RIGHT","top"),legend.outside=FALSE) +
+    tm_layout(legend.position = c("RIGHT","top"),legend.outside=TRUE) +
     tm_shape(land)+
     tm_fill(col = "white") 
    
-  tm_shape(hawaii_df) +
-    tm_fill(col="Spiny_lobster",colorNA = "lightblue", title = "Spiny lobster landings") +
+    tm_shape(mhi)+
+    tm_fill(col="lightblue",alpha = 0.4) +
+    tm_shape(hawaii_df) +
+    tm_fill(col="Spiny_lobster",colorNA = "lightblue", showNA = FALSE, title = "Spiny lobster landings (lbs)") +
     tm_borders(lwd = 1.2) +
-    tm_layout(legend.position = c("RIGHT","top"),legend.outside=FALSE) +
+    tm_layout(legend.position = c("RIGHT","top"),legend.outside=TRUE) +
     tm_shape(land)+
     tm_fill(col = "white") 
   
-  tm_shape(hawaii_df) +
-    tm_fill(col="Slipper_lobster",colorNA = "lightblue", title = "Slipper lobster landings") +
+  tm_shape(mhi)+
+    tm_fill(col="lightblue",alpha=0.4) +
+    tm_borders(lwd = 1.2) +
+    tm_shape(hawaii_df) +
+    tm_fill(col="Slipper_lobster",colorNA = "lightblue", showNA = FALSE, title = "Slipper lobster landings (lbs)") +
     tm_borders(lwd = 1.2) +
     tm_layout(legend.position = c("RIGHT","top"),legend.outside=FALSE) +
     tm_shape(land)+
