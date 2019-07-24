@@ -1,5 +1,4 @@
-#juvenile habitat 1-30 m ; benthic habitat with intermediate (5-30 cm) vertical relief (Parrish and Polovina 1994)
-#adult habitat 20-90 m; Slopes of banks with rocky substrate or  found in cracks and crevices in coral reef habitat  (Polovina 1989; Pitcher 1993)
+
 
 rm(list = ls())
 library(tidyverse)
@@ -13,23 +12,37 @@ boxdir<- '/Users/lennonthomas/Box Sync/Council Stuff/data/'
 #read in Data
 
 
-five_bath<-raster(paste0(boxdir,"hawaii_bty_5m/"))
+bathy<-raster(paste0(boxdir,"hawaii_bty_5m/"))
 
-repro_test<-projectRaster(five_bath,crs="+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0",method="ngb",filename=paste0(boxdir,"HI_bathy5m_reproject.tif",overwrite = TRUE))
+#bathy<-projectRaster(bathy,crs="+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0",method="ngb",filename=paste0(boxdir,"HI_bathy5m_reproject.tif",overwrite = TRUE),progress='text')
 
-writeRaster(five_bath,paste0(boxdir,"HI_bathy5m_reproject.tif"))
+#writeRaster(five_bath,paste0(boxdir,"HI_bathy5m_reproject.tif"))
+ext<-c(327900.5, 948525.5,2084429,2469945)
 
+bs_old<-raster(paste0(boxdir,"hawaii_bs_msc/"))
+bs_old<-crop(bs_old,ext,progress='text')
+bathy<-crop(bathy,ext,progress='text')
 
+bathy_peni<-reclassify(bathy,c(-5779,-16,0,-16,0,1,0,53,0),filename=paste0(boxdir,"bath_peni.tif"),overwrite=TRUE,progress='text')
+bs_peni<-reclassify(bs_old,c(0,139,0,139,300,1,NA,NA,2),filename=paste0(boxdir,"bs_peni.tif"),overwrite=TRUE,progress='text')
+extent(bs_peni)<-c(327900.5, 948525.5, 2084430, 2469945)
+#bathy_peni<-crop(bathy_peni,bs_peni_align,text='progress',snap="near")
+#bs_peni_align<-extend(bs_peni,c(327900.5, 948525.5, 2084430, 2469945),value=NA,progress='text')
+mhi_adult_s_cells<-overlay(bs_peni,bathy_peni,fun = function (x,y){x*y},filename=paste0(boxdir,"suit_peni_5.tif"),overwrite=TRUE,progress="text") 
+#project in QGIS bc processing time is faster
+#final<-projectRaster(mhi_adult_s_cells,crs="+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0",method="ngb",filename=paste0(boxdir,"final_peni_suit.tif",overwrite = TRUE),progress='text')
+mhi_adult_s_cells<-raster(paste0(boxdir,"peni_final_qgis.tif"))
+final<-reclassify(mhi_adult_s_cells,c(0,0,NA),filename=paste0(boxdir,"suit_peni_5_final.tif"),progress="text",overwrite=TRUE)
+final_area<-area(final,na.rm=TRUE,filename=paste0(boxdir,"suit_peni_5_final_area.tif"),progress="text")
+final_stats<-zonal(final_area,final,fun="sum",progress='text')
+write.csv(final_stats,paste0(boxdir,"final_area_peni.csv"))
+mhi_adult_s_cells<-raster(paste0(boxdir,"suit_peni_5_final.tif"))
 mhi_ext<-c(-161,-154.3,18.5,22.75)
 mhi_raster<-raster(paste0(boxdir,"tmp/mhi_raster.tif"))
 mhi_depth<-raster(paste0(boxdir,"tmp/mhi_depth.tif"))
 mhi_substrate<-raster(paste0(boxdir,"tmp/mhi_substrate.tif"))
 mhi_area<-raster(paste0(boxdir,"tmp/mhi_area.tif"))
 
-nwhi_raster<-raster(paste0(boxdir,"tmp/nwhi_raster.tif"))
-nwhi_depth<-raster(paste0(boxdir,"tmp/nwhi_depth.tif"))
-nwhi_substrate<-raster(paste0(boxdir,"tmp/nwhi_substrate.tif"))
-nwhi_area<-raster(paste0(boxdir,"tmp/nwhi_area.tif"))
 
 ##########################################################################
 ##########################################################################
@@ -82,19 +95,25 @@ hawaii<-crop(hawaii,mhi_ext)
 ##########################################################################
 
 #Adult suitable depth
-mhi_adult_depth<-mhi_depth
-mhi_adult_depth[mhi_adult_depth>5]<-0
-mhi_adult_depth[mhi_adult_depth>0]<-1
-
+#mhi_adult_depth<-mhi_depth
+#mhi_adult_depth[mhi_adult_depth>5]<-0
+#mhi_adult_depth[mhi_adult_depth>0]<-1
+#used reclassify function instead to create _peni tif based 0-100 m depth and >140 m bs
+bs_peni<-raster(paste0(boxdir,"bs_peni.tif"))
+bath_peni<-raster(paste0(boxdir,"bath_peni.tif"))
+bs_peni<-crop(bs_peni,bath_peni,filename=paste0(boxdir,"bs_peni_crop.tif"),progress="text")
+bath_peni<-crop(bath_peni,bs_peni,filename=paste0(boxdir,"bath_peni_crop.tif"),progress="text")
+extent(bs_peni)<-c(-160.671, -154.6492, 18.80287, 22.33534 )
 #Adults suitable substrate
-mhi_subtrate_adult<-mhi_substrate
-mhi_subtrate_adult[mhi_subtrate_adult < 140 ]<-0
-mhi_subtrate_adult[mhi_subtrate_adult >= 140 ]<-2
-mhi_subtrate_adult[is.na(mhi_subtrate_adult)]<-1
-mhi_subtrate_adult<-mask(mhi_subtrate_adult,mhi_depth)
+#mhi_substrate<-bs
+#mhi_subtrate_adult<-mhi_substrate
+#mhi_subtrate_adult[mhi_subtrate_adult < 140 ]<-0
+#mhi_subtrate_adult[mhi_subtrate_adult >= 140 ]<-2
+#mhi_subtrate_adult[is.na(mhi_subtrate_adult)]<-1
+#mhi_subtrate_adult<-mask(mhi_subtrate_adult,mhi_depth)
 
 
-mhi_adult_s_cells<- overlay(mhi_adult_depth,mhi_subtrate_adult,fun = function (x,y){x*y}) 
+mhi_adult_s_cells<- overlay(bs_peni,bath_peni,fun = function (x,y){x*y},progress="text") 
 
 writeRaster(mhi_adult_s_cells,filename = paste0(boxdir,"final_results/mhi_penicillatus_habitat.tif"),overwrite = TRUE)
 mhi_adult_s_cells<-raster(paste0(boxdir,"final_results/mhi_penicillatus_habitat.tif"))
